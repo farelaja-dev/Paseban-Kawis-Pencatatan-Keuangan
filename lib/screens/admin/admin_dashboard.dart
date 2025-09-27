@@ -30,19 +30,28 @@ class _AdminDashboardState extends State<AdminDashboard> {
   void initState() {
     super.initState();
     _loadDashboardData();
+    _setupRealtimeUpdates();
   }
 
   Future<void> _loadDashboardData() async {
-    setState(() {
-      _isLoading = true;
-    });
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
 
     try {
-      // Load consolidated summary
+      print(
+        '🔄 Admin Dashboard: Loading consolidated summary for ${_selectedMonth.month}/${_selectedMonth.year}',
+      );
+
+      // Force fresh data without any caching
       final summary = await _reportService.getConsolidatedSummary(
         _selectedMonth.month,
         _selectedMonth.year,
       );
+
+      print('📊 Admin Dashboard: Consolidated summary loaded: $summary');
 
       // Load UMKM list - First try to get all users to debug
       final allUsersSnapshot = await _firestore.collection('users').get();
@@ -104,17 +113,27 @@ class _AdminDashboardState extends State<AdminDashboard> {
       }
       print('Parsed UMKM list length: ${umkmList.length}');
 
-      setState(() {
-        _consolidatedSummary = summary;
-        _umkmList = umkmList;
-      });
+      if (mounted) {
+        setState(() {
+          _consolidatedSummary = summary;
+          _umkmList = umkmList;
+        });
+      }
+
+      // Debug profit ratio calculation
+      final profitRatio = _calculateProfitRatio();
+      print('🎯 Admin Dashboard: Profit ratio calculated: ${profitRatio}%');
+      print('   - Active UMKMs: ${summary['activeUMKMs']}');
+      print('   - Profitable UMKMs: ${summary['profitableUMKMs']}');
     } catch (e) {
-      print('Error loading dashboard data: $e');
+      print('❌ Error loading dashboard data: $e');
     }
 
-    setState(() {
-      _isLoading = false;
-    });
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
   Future<void> _selectMonth() async {
@@ -171,6 +190,37 @@ class _AdminDashboardState extends State<AdminDashboard> {
       context,
       MaterialPageRoute(builder: (context) => const AdminReports()),
     );
+  }
+
+  @override
+  void dispose() {
+    // Clean up any stream subscriptions if we had stored them
+    super.dispose();
+  }
+
+  void _setupRealtimeUpdates() {
+    // Monitor all transactions collection for any changes
+    FirebaseFirestore.instance.collection('transactions').snapshots().listen((
+      _,
+    ) {
+      // When any transaction changes, reload dashboard data
+      print(
+        '💬 Admin Dashboard: Transaction data changed, reloading dashboard...',
+      );
+      _loadDashboardData();
+    });
+
+    // Monitor UMKM users collection for changes
+    FirebaseFirestore.instance
+        .collection('users')
+        .where('role', isEqualTo: 'umkm')
+        .snapshots()
+        .listen((_) {
+          print(
+            '💬 Admin Dashboard: UMKM users changed, reloading dashboard...',
+          );
+          _loadDashboardData();
+        });
   }
 
   @override

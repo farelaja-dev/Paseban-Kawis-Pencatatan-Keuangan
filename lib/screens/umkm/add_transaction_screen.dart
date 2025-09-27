@@ -72,7 +72,9 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
       context: context,
       initialDate: _selectedDate,
       firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
+      lastDate: DateTime(
+        2030,
+      ), // Memungkinkan pemilihan tanggal hingga tahun 2030
     );
     if (picked != null && picked != _selectedDate) {
       setState(() {
@@ -348,6 +350,79 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                           style: const TextStyle(fontSize: 16),
                         ),
                       ),
+                    ),
+                    const SizedBox(height: 8),
+
+                    // Quick date selection buttons
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        TextButton.icon(
+                          onPressed: () {
+                            setState(() {
+                              _selectedDate = DateTime.now();
+                            });
+                          },
+                          icon: Icon(Icons.today, size: 16),
+                          label: Text(
+                            'Hari Ini',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.blue.shade600,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: () {
+                            setState(() {
+                              _selectedDate = DateTime.now().add(
+                                Duration(days: 1),
+                              );
+                            });
+                          },
+                          icon: Icon(Icons.skip_next, size: 16),
+                          label: Text('Besok', style: TextStyle(fontSize: 12)),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.blue.shade600,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: () {
+                            final firstDayNextMonth = DateTime(
+                              DateTime.now().month == 12
+                                  ? DateTime.now().year + 1
+                                  : DateTime.now().year,
+                              DateTime.now().month == 12
+                                  ? 1
+                                  : DateTime.now().month + 1,
+                              1,
+                            );
+                            setState(() {
+                              _selectedDate = firstDayNextMonth;
+                            });
+                          },
+                          icon: Icon(Icons.calendar_month, size: 16),
+                          label: Text(
+                            'Bulan Depan',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.blue.shade600,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 16),
 

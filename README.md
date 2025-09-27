@@ -19,6 +19,38 @@ Aplikasi mobile untuk membantu UMKM (Usaha Mikro Kecil Menengah) di Kalibaru Man
 
 ## 🚀 Quick Start
 
+### 📋 Prerequisites
+- Flutter SDK (latest stable version)
+- Android Studio / VS Code
+- Firebase account
+
+### 🔧 Setup Firebase
+1. **Clone repository**:
+   ```bash
+   git clone https://github.com/farelaja-dev/Paseban-Kawis-Pencatatan-Keuangan.git
+   cd Paseban-Kawis-Pencatatan-Keuangan
+   ```
+
+2. **Setup Firebase Configuration**:
+   - Copy `lib/firebase_options_template.dart` to `lib/firebase_options.dart`
+   - Fill in your Firebase configuration values
+   - Add `android/app/google-services.json` (download from Firebase Console)
+
+3. **Install dependencies**:
+   ```bash
+   flutter pub get
+   ```
+
+4. **Run the app**:
+   ```bash
+   flutter run
+   ```
+
+### ⚠️ Important Notes
+- **Never commit** `lib/firebase_options.dart` or `google-services.json` to version control
+- Use the template files to setup your own Firebase configuration
+- Firebase configuration files are already added to `.gitignore`
+
 ### Prasyarat
 
 - Flutter SDK (versi terbaru)

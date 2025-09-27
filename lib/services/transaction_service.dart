@@ -7,11 +7,16 @@ class TransactionService {
   // Add new transaction
   Future<String?> addTransaction(TransactionModel transaction) async {
     try {
-      await _firestore
+      print(
+        'Adding transaction: ${transaction.description}, amount: ${transaction.amount}, type: ${transaction.type}',
+      );
+      final docRef = await _firestore
           .collection('transactions')
           .add(transaction.toFirestore());
+      print('Transaction added successfully with ID: ${docRef.id}');
       return null; // Success
     } catch (e) {
+      print('Error adding transaction: $e');
       return 'Error adding transaction: $e';
     }
   }

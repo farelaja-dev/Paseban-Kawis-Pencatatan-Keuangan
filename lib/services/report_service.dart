@@ -245,9 +245,14 @@ class ReportService {
     int year,
   ) async {
     try {
+      print(
+        '🔄 ReportService: Getting fresh consolidated summary for $month/$year',
+      );
+
+      // Get fresh reports without caching
       final reports = await getAllMonthlyReports(month, year);
 
-      print('Consolidated Summary Debug:');
+      print('📊 Consolidated Summary Debug:');
       print('Total reports found: ${reports.length}');
       for (var report in reports) {
         print(
@@ -275,11 +280,13 @@ class ReportService {
 
       int profitableUMKMs = profitableUmkmIds.length;
 
-      print('Unique UMKM IDs: $uniqueUmkmIds');
-      print('Profitable UMKM IDs: $profitableUmkmIds');
-      print('Active UMKMs: $activeUMKMs, Profitable UMKMs: $profitableUMKMs');
+      print('📈 Unique UMKM IDs: $uniqueUmkmIds');
+      print('💰 Profitable UMKM IDs: $profitableUmkmIds');
+      print(
+        '🎯 Final counts - Active UMKMs: $activeUMKMs, Profitable UMKMs: $profitableUMKMs',
+      );
 
-      return {
+      final result = {
         'totalIncome': totalIncome,
         'totalExpense': totalExpense,
         'netProfit': totalIncome - totalExpense,
@@ -288,8 +295,11 @@ class ReportService {
         'averageIncome': activeUMKMs > 0 ? totalIncome / activeUMKMs : 0,
         'averageExpense': activeUMKMs > 0 ? totalExpense / activeUMKMs : 0,
       };
+
+      print('✅ ReportService: Returning consolidated summary: $result');
+      return result;
     } catch (e) {
-      print('Error getting consolidated summary: $e');
+      print('❌ Error getting consolidated summary: $e');
       return {};
     }
   }

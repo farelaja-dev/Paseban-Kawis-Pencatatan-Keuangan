@@ -481,8 +481,11 @@ class _MonthPickerDialogState extends State<_MonthPickerDialog> {
       'Desember',
     ];
 
-    final currentYear = DateTime.now().year;
-    final years = List.generate(5, (index) => currentYear - index);
+    // Generate years from 2020 to 2030
+    final years = <int>[];
+    for (int year = 2030; year >= 2020; year--) {
+      years.add(year);
+    }
 
     return AlertDialog(
       title: const Text('Pilih Bulan'),

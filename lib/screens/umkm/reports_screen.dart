@@ -4,7 +4,9 @@ import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../services/auth_service.dart';
 import '../../services/report_service.dart';
+import '../../services/transaction_service.dart';
 import '../../models/report_model.dart';
+import '../../models/transaction_model.dart';
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -16,6 +18,7 @@ class ReportsScreen extends StatefulWidget {
 class _ReportsScreenState extends State<ReportsScreen>
     with SingleTickerProviderStateMixin {
   final ReportService _reportService = ReportService();
+  final TransactionService _transactionService = TransactionService();
   late TabController _tabController;
 
   String? _userId;
@@ -26,6 +29,9 @@ class _ReportsScreenState extends State<ReportsScreen>
   YearlyReportModel? _yearlyReport;
   bool _isLoadingMonthly = true;
   bool _isLoadingYearly = true;
+
+  // Stream subscriptions for real-time updates
+  late Stream<List<TransactionModel>> _transactionsStream;
 
   @override
   void initState() {
@@ -46,7 +52,25 @@ class _ReportsScreenState extends State<ReportsScreen>
 
     if (userData != null) {
       _userId = userData.id;
+      // Set up transaction stream for real-time updates
+      _transactionsStream = _transactionService.getUserTransactions(_userId!);
       await _loadReports();
+
+      // Listen to transaction changes for auto-refresh
+      _setupTransactionListener();
+    }
+  }
+
+  void _setupTransactionListener() {
+    if (_userId != null) {
+      _transactionsStream.listen((_) {
+        // When transactions change, reload reports after a short delay
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted) {
+            _loadReports();
+          }
+        });
+      });
     }
   }
 
@@ -64,11 +88,11 @@ class _ReportsScreenState extends State<ReportsScreen>
     });
 
     try {
-      // Load monthly report
+      // Force regenerate monthly report to get latest data
       print(
-        'Loading monthly report for ${_selectedMonth.month}/${_selectedMonth.year}',
+        'Force generating monthly report for ${_selectedMonth.month}/${_selectedMonth.year}',
       );
-      final monthlyReport = await _reportService.getMonthlyReport(
+      final monthlyReport = await _reportService.generateMonthlyReport(
         _userId!,
         _selectedMonth.month,
         _selectedMonth.year,
@@ -285,8 +309,8 @@ class _ReportsScreenState extends State<ReportsScreen>
       ),
       const SizedBox(height: 16),
 
-      // Income by Category
-      if (report.incomeByCategory.isNotEmpty) ...[
+      // Combined Income vs Expense Chart
+      if (report.totalIncome > 0 || report.totalExpense > 0) ...[
         Card(
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -294,25 +318,104 @@ class _ReportsScreenState extends State<ReportsScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Pemasukan per Kategori',
+                  'Perbandingan Pemasukan vs Pengeluaran',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 16),
-                SizedBox(
-                  height: 200,
-                  child: PieChart(
-                    PieChartData(
-                      sections: _createPieChartSections(
-                        report.incomeByCategory,
-                        Colors.green,
-                      ),
-                      centerSpaceRadius: 40,
-                      sectionsSpace: 2,
-                    ),
-                  ),
+                // Use LayoutBuilder to handle different screen sizes
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    // If width is too small, use vertical layout
+                    if (constraints.maxWidth < 350) {
+                      return Column(
+                        children: [
+                          // Pie Chart
+                          SizedBox(
+                            height: 200,
+                            child: PieChart(
+                              PieChartData(
+                                sections:
+                                    _createIncomeExpenseComparisonSections(
+                                      report.totalIncome,
+                                      report.totalExpense,
+                                    ),
+                                centerSpaceRadius: 40,
+                                sectionsSpace: 4,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          // Legend and Details
+                          _buildCompactLegend(report, formatter),
+                        ],
+                      );
+                    } else {
+                      // Use horizontal layout for larger screens
+                      return SizedBox(
+                        height: 220,
+                        child: Row(
+                          children: [
+                            // Pie Chart
+                            Expanded(
+                              flex: 3,
+                              child: PieChart(
+                                PieChartData(
+                                  sections:
+                                      _createIncomeExpenseComparisonSections(
+                                        report.totalIncome,
+                                        report.totalExpense,
+                                      ),
+                                  centerSpaceRadius: 40,
+                                  sectionsSpace: 4,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            // Legend and Details
+                            Expanded(
+                              flex: 2,
+                              child: SingleChildScrollView(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    _buildLegendItem(
+                                      'Pemasukan',
+                                      Colors.green.shade600,
+                                      _formatCompactCurrency(
+                                        report.totalIncome,
+                                      ),
+                                      _calculatePercentage(
+                                        report.totalIncome,
+                                        report.totalIncome +
+                                            report.totalExpense,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    _buildLegendItem(
+                                      'Pengeluaran',
+                                      Colors.red.shade600,
+                                      _formatCompactCurrency(
+                                        report.totalExpense,
+                                      ),
+                                      _calculatePercentage(
+                                        report.totalExpense,
+                                        report.totalIncome +
+                                            report.totalExpense,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    _buildProfitBox(report, formatter),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+                  },
                 ),
-                const SizedBox(height: 16),
-                ..._buildCategoryList(report.incomeByCategory, formatter),
               ],
             ),
           ),
@@ -320,8 +423,9 @@ class _ReportsScreenState extends State<ReportsScreen>
         const SizedBox(height: 16),
       ],
 
-      // Expense by Category
-      if (report.expenseByCategory.isNotEmpty) ...[
+      // Detailed Category Breakdown
+      if (report.incomeByCategory.isNotEmpty ||
+          report.expenseByCategory.isNotEmpty) ...[
         Card(
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -329,25 +433,36 @@ class _ReportsScreenState extends State<ReportsScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Pengeluaran per Kategori',
+                  'Rincian per Kategori',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 16),
-                SizedBox(
-                  height: 200,
-                  child: PieChart(
-                    PieChartData(
-                      sections: _createPieChartSections(
-                        report.expenseByCategory,
-                        Colors.red,
-                      ),
-                      centerSpaceRadius: 40,
-                      sectionsSpace: 2,
+                if (report.incomeByCategory.isNotEmpty) ...[
+                  const Text(
+                    'Pemasukan',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.green,
                     ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                ..._buildCategoryList(report.expenseByCategory, formatter),
+                  const SizedBox(height: 8),
+                  ..._buildCategoryList(report.incomeByCategory, formatter),
+                  if (report.expenseByCategory.isNotEmpty)
+                    const SizedBox(height: 16),
+                ],
+                if (report.expenseByCategory.isNotEmpty) ...[
+                  const Text(
+                    'Pengeluaran',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.red,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ..._buildCategoryList(report.expenseByCategory, formatter),
+                ],
               ],
             ),
           ),
@@ -486,11 +601,15 @@ class _ReportsScreenState extends State<ReportsScreen>
                 'Margin Keuntungan',
                 '${report.profitMargin.toStringAsFixed(1)}%',
               ),
-              _buildStatItem(
+              _buildClickableStatItem(
+                'Rata-rata Pemasukan per Bulan',
+                formatter.format(report.totalIncome / 12),
                 'Rata-rata Pemasukan per Bulan',
                 formatter.format(report.totalIncome / 12),
               ),
-              _buildStatItem(
+              _buildClickableStatItem(
+                'Rata-rata Pengeluaran per Bulan',
+                formatter.format(report.totalExpense / 12),
                 'Rata-rata Pengeluaran per Bulan',
                 formatter.format(report.totalExpense / 12),
               ),
@@ -585,6 +704,84 @@ class _ReportsScreenState extends State<ReportsScreen>
     );
   }
 
+  Widget _buildClickableStatItem(
+    String label,
+    String value,
+    String dialogTitle,
+    String fullValue,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: InkWell(
+        onTap: () => _showDetailDialog(dialogTitle, fullValue),
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                flex: 2,
+                child: Text(
+                  label,
+                  style: TextStyle(color: Colors.grey.shade600),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 2,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        value,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.end,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      Icons.visibility,
+                      size: 16,
+                      color: Colors.blue.shade600,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showDetailDialog(String title, String value) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text(
+            title,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          content: SelectableText(
+            value,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Tutup'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Widget _buildNoDataCard(String message) {
     return Card(
       child: Padding(
@@ -606,37 +803,185 @@ class _ReportsScreenState extends State<ReportsScreen>
     );
   }
 
-  List<PieChartSectionData> _createPieChartSections(
-    Map<String, double> data,
-    MaterialColor baseColor,
+  List<PieChartSectionData> _createIncomeExpenseComparisonSections(
+    double totalIncome,
+    double totalExpense,
   ) {
-    final total = data.values.fold(0.0, (sum, value) => sum + value);
-    final colors = [
-      baseColor.shade600,
-      baseColor.shade400,
-      baseColor.shade300,
-      baseColor.shade200,
-      baseColor.shade100,
-    ];
+    final total = totalIncome + totalExpense;
+    if (total == 0) return [];
 
-    int index = 0;
-    return data.entries.map((entry) {
-      final percentage = (entry.value / total) * 100;
-      final color = colors[index % colors.length];
-      index++;
+    final incomePercentage = (totalIncome / total) * 100;
+    final expensePercentage = (totalExpense / total) * 100;
 
-      return PieChartSectionData(
-        value: entry.value,
-        title: '${percentage.toStringAsFixed(1)}%',
-        color: color,
-        radius: 60,
-        titleStyle: const TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.bold,
-          color: Colors.white,
+    return [
+      if (totalIncome > 0)
+        PieChartSectionData(
+          value: totalIncome,
+          title: '${incomePercentage.toStringAsFixed(1)}%',
+          color: Colors.green.shade600,
+          radius: 60,
+          titleStyle: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
         ),
-      );
-    }).toList();
+      if (totalExpense > 0)
+        PieChartSectionData(
+          value: totalExpense,
+          title: '${expensePercentage.toStringAsFixed(1)}%',
+          color: Colors.red.shade600,
+          radius: 60,
+          titleStyle: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+    ];
+  }
+
+  Widget _buildCompactLegend(ReportModel report, NumberFormat formatter) {
+    return Row(
+      children: [
+        Expanded(
+          child: _buildLegendItem(
+            'Pemasukan',
+            Colors.green.shade600,
+            _formatCompactCurrency(report.totalIncome),
+            _calculatePercentage(
+              report.totalIncome,
+              report.totalIncome + report.totalExpense,
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _buildLegendItem(
+            'Pengeluaran',
+            Colors.red.shade600,
+            _formatCompactCurrency(report.totalExpense),
+            _calculatePercentage(
+              report.totalExpense,
+              report.totalIncome + report.totalExpense,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildProfitBox(ReportModel report, NumberFormat formatter) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: report.isProfitable ? Colors.green.shade50 : Colors.red.shade50,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+          color: report.isProfitable
+              ? Colors.green.shade200
+              : Colors.red.shade200,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            report.isProfitable ? 'Keuntungan' : 'Kerugian',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              color: report.isProfitable
+                  ? Colors.green.shade800
+                  : Colors.red.shade800,
+            ),
+          ),
+          Text(
+            _formatCompactCurrency(report.netProfit.abs()),
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: report.isProfitable
+                  ? Colors.green.shade800
+                  : Colors.red.shade800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatCompactCurrency(double amount) {
+    if (amount >= 1000000000) {
+      return 'Rp ${(amount / 1000000000).toStringAsFixed(1)}M';
+    } else if (amount >= 1000000) {
+      return 'Rp ${(amount / 1000000).toStringAsFixed(1)}Jt';
+    } else if (amount >= 1000) {
+      return 'Rp ${(amount / 1000).toStringAsFixed(0)}rb';
+    } else {
+      return NumberFormat.currency(
+        locale: 'id_ID',
+        symbol: 'Rp ',
+      ).format(amount);
+    }
+  }
+
+  Widget _buildLegendItem(
+    String label,
+    Color color,
+    String value,
+    String percentage,
+  ) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 6),
+        Flexible(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+              Text(
+                percentage,
+                style: TextStyle(
+                  fontSize: 9,
+                  color: Colors.grey.shade600,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _calculatePercentage(double value, double total) {
+    if (total == 0) return '0.0%';
+    final percentage = (value / total) * 100;
+    return '${percentage.toStringAsFixed(1)}%';
   }
 
   List<Widget> _buildCategoryList(
@@ -802,8 +1147,11 @@ class _MonthPickerDialogState extends State<_MonthPickerDialog> {
       'Desember',
     ];
 
-    final currentYear = DateTime.now().year;
-    final years = List.generate(5, (index) => currentYear - index);
+    // Generate years from 2020 to 2030
+    final years = <int>[];
+    for (int year = 2030; year >= 2020; year--) {
+      years.add(year);
+    }
 
     return AlertDialog(
       title: const Text('Pilih Bulan'),
@@ -900,8 +1248,11 @@ class _YearPickerDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final currentYear = DateTime.now().year;
-    final years = List.generate(10, (index) => currentYear - index);
+    // Generate years from 2020 to 2030
+    final years = <int>[];
+    for (int year = 2030; year >= 2020; year--) {
+      years.add(year);
+    }
 
     return AlertDialog(
       title: const Text('Pilih Tahun'),
